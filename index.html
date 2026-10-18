@@ -1,0 +1,1209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Slop Detector</title>
+  <style>
+    /* ── Reset & Base ─────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #07070f;
+      --surface: rgba(255,255,255,0.04);
+      --surface-hover: rgba(255,255,255,0.07);
+      --border: rgba(255,255,255,0.08);
+      --border-glow: rgba(168,85,247,0.4);
+      --purple: #a855f7;
+      --pink:   #ec4899;
+      --cyan:   #06b6d4;
+      --red:    #ef4444;
+      --amber:  #f59e0b;
+      --green:  #22c55e;
+      --text:   #f1f5f9;
+      --muted:  #64748b;
+      --radius: 16px;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+      position: relative;
+    }
+
+    /* ── Animated Mesh Background ─────────────────────────────────── */
+    .bg-mesh {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      overflow: hidden;
+    }
+
+    .orb {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(120px);
+      opacity: 0.18;
+      animation: drift linear infinite;
+    }
+
+    .orb-1 {
+      width: 700px; height: 700px;
+      background: radial-gradient(circle, #a855f7, transparent 70%);
+      top: -20%; left: -15%;
+      animation-duration: 22s;
+    }
+    .orb-2 {
+      width: 500px; height: 500px;
+      background: radial-gradient(circle, #ec4899, transparent 70%);
+      top: 30%; right: -10%;
+      animation-duration: 28s;
+      animation-direction: reverse;
+    }
+    .orb-3 {
+      width: 400px; height: 400px;
+      background: radial-gradient(circle, #06b6d4, transparent 70%);
+      bottom: 0; left: 30%;
+      animation-duration: 18s;
+    }
+
+    @keyframes drift {
+      0%   { transform: translate(0, 0) scale(1); }
+      33%  { transform: translate(40px, -30px) scale(1.05); }
+      66%  { transform: translate(-20px, 40px) scale(0.95); }
+      100% { transform: translate(0, 0) scale(1); }
+    }
+
+    /* Noise grain overlay */
+    .bg-mesh::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+      pointer-events: none;
+      opacity: 0.5;
+    }
+
+    /* ── Layout ───────────────────────────────────────────────────── */
+    .wrapper {
+      position: relative;
+      z-index: 1;
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 48px 24px 80px;
+    }
+
+    /* ── Header ───────────────────────────────────────────────────── */
+    header {
+      text-align: center;
+      margin-bottom: 56px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 14px;
+      border-radius: 999px;
+      border: 1px solid rgba(168,85,247,0.3);
+      background: rgba(168,85,247,0.1);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--purple);
+      margin-bottom: 20px;
+    }
+
+    .badge-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--purple);
+      animation: pulse-dot 1.8s ease-in-out infinite;
+    }
+
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%       { opacity: 0.4; transform: scale(0.7); }
+    }
+
+    h1 {
+      font-size: clamp(2.4rem, 6vw, 4rem);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.1;
+      background: linear-gradient(135deg, #fff 30%, #a855f7 60%, #ec4899 90%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 14px;
+    }
+
+    .tagline {
+      font-size: 1.05rem;
+      color: var(--muted);
+      max-width: 480px;
+      margin: 0 auto;
+      line-height: 1.6;
+    }
+
+    /* ── Input Card ───────────────────────────────────────────────── */
+    .input-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 28px;
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      margin-bottom: 24px;
+      transition: border-color 0.3s;
+    }
+
+    .input-card:focus-within {
+      border-color: var(--border-glow);
+      box-shadow: 0 0 0 1px var(--border-glow), 0 8px 40px rgba(168,85,247,0.12);
+    }
+
+    .input-label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 10px;
+      display: block;
+    }
+
+    .input-row {
+      display: flex;
+      gap: 12px;
+    }
+
+    .url-input {
+      flex: 1;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 18px;
+      color: var(--text);
+      font-size: 0.95rem;
+      outline: none;
+      transition: border-color 0.2s, background 0.2s;
+    }
+
+    .url-input::placeholder { color: var(--muted); }
+
+    .url-input:focus {
+      border-color: rgba(168,85,247,0.5);
+      background: rgba(168,85,247,0.05);
+    }
+
+    .analyze-btn {
+      padding: 14px 28px;
+      background: linear-gradient(135deg, #a855f7, #ec4899);
+      border: none;
+      border-radius: 10px;
+      color: #fff;
+      font-size: 0.9rem;
+      font-weight: 700;
+      cursor: pointer;
+      letter-spacing: 0.02em;
+      position: relative;
+      overflow: hidden;
+      transition: opacity 0.2s, transform 0.15s;
+      white-space: nowrap;
+    }
+
+    .analyze-btn::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(255,255,255,0.15), transparent);
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+
+    .analyze-btn:hover::before { opacity: 1; }
+    .analyze-btn:hover { transform: translateY(-1px); }
+    .analyze-btn:active { transform: translateY(0) scale(0.98); }
+    .analyze-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+    /* Text input toggle */
+    .tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+
+    .tab-btn {
+      padding: 7px 16px;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--muted);
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .tab-btn.active {
+      background: rgba(168,85,247,0.15);
+      border-color: var(--purple);
+      color: var(--purple);
+    }
+
+    .text-input {
+      width: 100%;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 18px;
+      color: var(--text);
+      font-size: 0.88rem;
+      font-family: inherit;
+      outline: none;
+      resize: vertical;
+      min-height: 120px;
+      transition: border-color 0.2s, background 0.2s;
+      line-height: 1.6;
+    }
+
+    .text-input::placeholder { color: var(--muted); }
+    .text-input:focus {
+      border-color: rgba(168,85,247,0.5);
+      background: rgba(168,85,247,0.05);
+    }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* ── Progress / Scanning ──────────────────────────────────────── */
+    .scan-progress {
+      display: none;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 32px 28px;
+      backdrop-filter: blur(20px);
+      margin-bottom: 24px;
+    }
+
+    .scan-progress.visible { display: block; }
+
+    .scan-header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 24px;
+    }
+
+    .scan-spinner {
+      width: 32px; height: 32px;
+      border: 3px solid rgba(168,85,247,0.2);
+      border-top-color: var(--purple);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      flex-shrink: 0;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .scan-label {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .scan-sub {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    .steps-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .step-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 0.85rem;
+      color: var(--muted);
+      transition: color 0.3s;
+    }
+
+    .step-item.done   { color: var(--green); }
+    .step-item.active { color: var(--text); }
+
+    .step-icon {
+      width: 20px; height: 20px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 10px;
+      flex-shrink: 0;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid var(--border);
+      transition: all 0.3s;
+    }
+
+    .step-item.done .step-icon {
+      background: rgba(34,197,94,0.15);
+      border-color: var(--green);
+      color: var(--green);
+    }
+
+    .step-item.active .step-icon {
+      background: rgba(168,85,247,0.15);
+      border-color: var(--purple);
+      animation: spin 0.9s linear infinite;
+    }
+
+    /* ── Results ──────────────────────────────────────────────────── */
+    .results { display: none; }
+    .results.visible { display: block; }
+
+    /* Score card */
+    .score-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 36px 32px;
+      backdrop-filter: blur(20px);
+      margin-bottom: 20px;
+      position: relative;
+      overflow: hidden;
+      text-align: center;
+    }
+
+    .score-card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: var(--score-glow, transparent);
+      opacity: 0.06;
+      pointer-events: none;
+    }
+
+    .verdict-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 18px;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 20px;
+      border: 1px solid currentColor;
+    }
+
+    .verdict-badge.high  { color: var(--red);   background: rgba(239,68,68,0.1);   }
+    .verdict-badge.mid   { color: var(--amber);  background: rgba(245,158,11,0.1);  }
+    .verdict-badge.low   { color: var(--green);  background: rgba(34,197,94,0.1);   }
+
+    .score-ring {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 160px; height: 160px;
+      margin: 0 auto 20px;
+    }
+
+    .ring-svg {
+      position: absolute;
+      inset: 0;
+      width: 100%; height: 100%;
+      transform: rotate(-90deg);
+    }
+
+    .ring-track {
+      fill: none;
+      stroke: rgba(255,255,255,0.06);
+      stroke-width: 8;
+    }
+
+    .ring-progress {
+      fill: none;
+      stroke-width: 8;
+      stroke-linecap: round;
+      stroke-dasharray: 408;
+      stroke-dashoffset: 408;
+      transition: stroke-dashoffset 1.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .score-num {
+      font-size: 3rem;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      line-height: 1;
+    }
+
+    .score-label {
+      font-size: 0.7rem;
+      color: var(--muted);
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-top: 2px;
+    }
+
+    .score-verdict-text {
+      font-size: 1.2rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .score-description {
+      font-size: 0.88rem;
+      color: var(--muted);
+      max-width: 420px;
+      margin: 0 auto;
+      line-height: 1.6;
+    }
+
+    /* Signals grid */
+    .signals-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 14px;
+      margin-bottom: 20px;
+    }
+
+    .signal-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px;
+      backdrop-filter: blur(20px);
+      transition: border-color 0.2s, transform 0.2s;
+      cursor: default;
+    }
+
+    .signal-card:hover {
+      border-color: rgba(168,85,247,0.3);
+      transform: translateY(-2px);
+    }
+
+    .signal-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+
+    .signal-icon { font-size: 1.1rem; }
+
+    .signal-pill {
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 2px 8px;
+      border-radius: 999px;
+    }
+
+    .signal-pill.bad    { background: rgba(239,68,68,0.15);  color: var(--red);   }
+    .signal-pill.warn   { background: rgba(245,158,11,0.15); color: var(--amber); }
+    .signal-pill.good   { background: rgba(34,197,94,0.15);  color: var(--green); }
+
+    .signal-name {
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 4px;
+    }
+
+    .signal-detail {
+      font-size: 0.75rem;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+
+    /* Evidence section */
+    .evidence-section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      backdrop-filter: blur(20px);
+      margin-bottom: 20px;
+    }
+
+    .section-title {
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 16px;
+    }
+
+    .evidence-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .evidence-item {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      font-size: 0.84rem;
+      line-height: 1.5;
+      padding: 12px 14px;
+      border-radius: 8px;
+      background: rgba(255,255,255,0.02);
+      border: 1px solid transparent;
+      transition: border-color 0.2s;
+    }
+
+    .evidence-item:hover { border-color: var(--border); }
+
+    .ev-icon { flex-shrink: 0; font-size: 1rem; margin-top: 1px; }
+    .ev-text { color: var(--muted); }
+    .ev-text strong { color: var(--text); display: block; margin-bottom: 2px; }
+
+    /* Phrase highlights */
+    .phrase-section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      backdrop-filter: blur(20px);
+      margin-bottom: 20px;
+    }
+
+    .phrase-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .phrase-tag {
+      padding: 5px 12px;
+      border-radius: 6px;
+      font-size: 0.78rem;
+      font-weight: 500;
+      cursor: default;
+      transition: transform 0.15s;
+    }
+
+    .phrase-tag:hover { transform: scale(1.04); }
+    .phrase-tag.high  { background: rgba(239,68,68,0.12);  color: #fca5a5; border: 1px solid rgba(239,68,68,0.3);  }
+    .phrase-tag.mid   { background: rgba(245,158,11,0.12); color: #fcd34d; border: 1px solid rgba(245,158,11,0.3); }
+    .phrase-tag.low   { background: rgba(168,85,247,0.12); color: #d8b4fe; border: 1px solid rgba(168,85,247,0.3); }
+
+    /* Share / copy bar */
+    .actions-bar {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .action-btn {
+      flex: 1;
+      min-width: 120px;
+      padding: 12px 20px;
+      border-radius: 10px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+    }
+
+    .action-btn:hover {
+      background: var(--surface-hover);
+      border-color: rgba(168,85,247,0.4);
+      color: var(--purple);
+    }
+
+    .action-btn.primary {
+      background: linear-gradient(135deg, #a855f7, #ec4899);
+      border-color: transparent;
+      color: #fff;
+    }
+
+    .action-btn.primary:hover {
+      opacity: 0.9;
+      color: #fff;
+    }
+
+    /* ── Examples ─────────────────────────────────────────────────── */
+    .examples {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .example-chip {
+      padding: 6px 14px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      font-size: 0.78rem;
+      color: var(--muted);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .example-chip:hover {
+      background: rgba(168,85,247,0.1);
+      border-color: rgba(168,85,247,0.4);
+      color: var(--purple);
+    }
+
+    /* ── Footer ───────────────────────────────────────────────────── */
+    footer {
+      text-align: center;
+      margin-top: 48px;
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+
+    footer a { color: var(--purple); text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+
+    /* ── Animations ───────────────────────────────────────────────── */
+    @keyframes fade-up {
+      from { opacity: 0; transform: translateY(20px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .fade-up { animation: fade-up 0.5s ease forwards; }
+
+    .fade-up-1 { animation-delay: 0.05s; opacity: 0; }
+    .fade-up-2 { animation-delay: 0.12s; opacity: 0; }
+    .fade-up-3 { animation-delay: 0.20s; opacity: 0; }
+    .fade-up-4 { animation-delay: 0.28s; opacity: 0; }
+
+    /* ── Tooltip ──────────────────────────────────────────────────── */
+    [data-tip] { position: relative; }
+    [data-tip]:hover::after {
+      content: attr(data-tip);
+      position: absolute;
+      bottom: calc(100% + 8px);
+      left: 50%;
+      transform: translateX(-50%);
+      background: #1e1e2e;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px 10px;
+      font-size: 0.72rem;
+      color: var(--text);
+      white-space: nowrap;
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    /* ── Responsive ───────────────────────────────────────────────── */
+    @media (max-width: 600px) {
+      .input-row { flex-direction: column; }
+      .analyze-btn { width: 100%; }
+      .signals-grid { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Animated background -->
+  <div class="bg-mesh" aria-hidden="true">
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+  </div>
+
+  <div class="wrapper">
+
+    <!-- ── Header ── -->
+    <header>
+      <div class="badge"><span class="badge-dot"></span>AI Detector · v1.0</div>
+      <h1>AI Slop Checker</h1>
+      <p class="tagline">Drop a URL or paste text. We'll tell you if it's genuine content or low-effort AI-generated garbage.</p>
+    </header>
+
+    <!-- ── Input Card ── -->
+    <div class="input-card fade-up fade-up-1">
+      <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('url', this)">🔗 URL</button>
+        <button class="tab-btn" onclick="switchTab('text', this)">📄 Paste Text</button>
+      </div>
+
+      <div class="tab-panel active" id="panel-url">
+        <label class="input-label" for="url-input">Website URL</label>
+        <div class="input-row">
+          <input
+            id="url-input"
+            class="url-input"
+            type="url"
+            placeholder="https://totally-not-slop.ai/blog/10-reasons-ai-is-amazing"
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <button class="analyze-btn" onclick="runAnalysis()">Analyze →</button>
+        </div>
+        <div class="examples">
+          <span style="font-size:0.72rem;color:var(--muted);align-self:center;">Try:</span>
+          <span class="example-chip" onclick="fillExample('https://medium.com/@aiwriter/10-ways-ai-transforms-productivity')">Medium AI post</span>
+          <span class="example-chip" onclick="fillExample('https://linkedin.com/pulse/navigating-ai-landscape-thoughts-viratpaudel')">LinkedIn slop</span>
+          <span class="example-chip" onclick="fillExample('https://techblog.io/revolutionizing-the-paradigm-with-ai')">Tech blog</span>
+        </div>
+      </div>
+
+      <div class="tab-panel" id="panel-text">
+        <label class="input-label" for="text-input">Paste Content</label>
+        <textarea
+          id="text-input"
+          class="text-input"
+          placeholder="Paste the article, blog post, or website copy here…&#10;&#10;In today's rapidly evolving digital landscape, it is crucial to leverage cutting-edge AI solutions to supercharge your workflow and unlock unprecedented synergies..."
+        ></textarea>
+        <div style="margin-top:12px;text-align:right;">
+          <button class="analyze-btn" onclick="runAnalysis()">Analyze →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Scanning Progress ── -->
+    <div class="scan-progress" id="scan-progress">
+      <div class="scan-header">
+        <div class="scan-spinner"></div>
+        <div>
+          <div class="scan-label" id="scan-label-text">Fetching page content…</div>
+          <div class="scan-sub" id="scan-sub-text">Analyzing signals across 12 dimensions</div>
+        </div>
+      </div>
+      <ul class="steps-list" id="steps-list">
+        <li class="step-item" id="step-0"><span class="step-icon">◌</span>Fetching &amp; parsing content</li>
+        <li class="step-item" id="step-1"><span class="step-icon">◌</span>Vocabulary &amp; phrase analysis</li>
+        <li class="step-item" id="step-2"><span class="step-icon">◌</span>Structural pattern detection</li>
+        <li class="step-item" id="step-3"><span class="step-icon">◌</span>Entropy &amp; burstiness scoring</li>
+        <li class="step-item" id="step-4"><span class="step-icon">◌</span>Metadata &amp; authorship signals</li>
+        <li class="step-item" id="step-5"><span class="step-icon">◌</span>Computing slop index…</li>
+      </ul>
+    </div>
+
+    <!-- ── Results ── -->
+    <div class="results" id="results">
+
+      <!-- Score card -->
+      <div class="score-card fade-up fade-up-1" id="score-card">
+        <div class="verdict-badge" id="verdict-badge">⚠ Verdict</div>
+
+        <div class="score-ring">
+          <svg class="ring-svg" viewBox="0 0 140 140">
+            <circle class="ring-track"    cx="70" cy="70" r="65"/>
+            <circle class="ring-progress" cx="70" cy="70" r="65" id="ring-progress"/>
+          </svg>
+          <div>
+            <div class="score-num" id="score-num">0</div>
+            <div class="score-label">Slop Score</div>
+          </div>
+        </div>
+
+        <div class="score-verdict-text" id="verdict-text">Analyzing…</div>
+        <div class="score-description" id="verdict-desc"></div>
+      </div>
+
+      <!-- Signal cards -->
+      <div class="signals-grid" id="signals-grid"></div>
+
+      <!-- Evidence -->
+      <div class="evidence-section fade-up fade-up-3" id="evidence-section">
+        <div class="section-title">🔍 Evidence Found</div>
+        <div class="evidence-list" id="evidence-list"></div>
+      </div>
+
+      <!-- Detected phrases -->
+      <div class="phrase-section fade-up fade-up-3" id="phrase-section">
+        <div class="section-title">🚩 Flagged Phrases</div>
+        <div class="phrase-tags" id="phrase-tags"></div>
+      </div>
+
+      <!-- Actions -->
+      <div class="actions-bar fade-up fade-up-4">
+        <button class="action-btn" onclick="copyReport()">📋 Copy Report</button>
+        <button class="action-btn" onclick="resetForm()">🔄 Check Another</button>
+        <button class="action-btn primary" onclick="shareResult()">↗ Share Result</button>
+      </div>
+
+    </div>
+
+    <!-- ── Footer ── -->
+    <footer>
+      <p>AI Slop Checker · Built for the lulz · <a href="https://github.com/viratpaudel" target="_blank">@viratpaudel</a></p>
+      <p style="margin-top:6px;font-size:0.7rem;opacity:0.5;">Analysis is heuristic-based and for entertainment purposes. Not a substitute for critical thinking.</p>
+    </footer>
+
+  </div>
+
+  <script>
+    // ── State ──────────────────────────────────────────────────────
+    let activeTab = 'url';
+
+    // ── Tab switching ──────────────────────────────────────────────
+    function switchTab(tab, btn) {
+      activeTab = tab;
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById(`panel-${tab}`).classList.add('active');
+    }
+
+    function fillExample(url) {
+      document.getElementById('url-input').value = url;
+      switchTab('url', document.querySelectorAll('.tab-btn')[0]);
+    }
+
+    // ── AI Slop signals database ───────────────────────────────────
+    const SLOP_PHRASES = {
+      high: [
+        "in today's rapidly evolving", "digital landscape", "it is crucial to",
+        "leverage cutting-edge", "unlock unprecedented", "dive deep into",
+        "game-changer", "supercharge your", "paradigm shift", "thought leader",
+        "in conclusion,", "it is important to note", "delve into",
+        "as an ai language model", "certainly!", "absolutely!",
+        "revolutionize", "synergies", "holistic approach", "seamlessly integrate",
+        "transformative", "in the realm of", "foster innovation",
+        "elevate your", "empower", "navigate the complexities",
+        "at the end of the day", "move the needle",
+      ],
+      mid: [
+        "best practices", "key takeaways", "deep dive", "actionable insights",
+        "robust solution", "scalable", "pain points", "use case",
+        "streamline", "in summary", "furthermore", "moreover", "additionally",
+        "it's worth noting", "let's explore", "in this article",
+        "today we'll", "in this blog post", "stay ahead of the curve",
+        "cutting-edge", "state-of-the-art", "seamless", "dynamic",
+      ],
+      low: [
+        "machine learning", "artificial intelligence", "productivity",
+        "efficiency", "innovation", "strategy", "engagement", "metrics",
+        "growth", "framework", "ecosystem", "journey", "impact",
+      ],
+    };
+
+    const STRUCTURAL_SIGNALS = [
+      { pattern: /^#+\s.{0,40}$/m, name: "Markdown-style headers", weight: 10 },
+      { pattern: /^\*\s|^-\s|^\d+\.\s/m, name: "Bullet list heavy", weight: 8 },
+      { pattern: /\b(first|second|third|fourth|fifth|finally)[,:]?\s/gi, name: "Listicle ordering", weight: 12 },
+      { pattern: /conclusion|summary|key takeaway/i, name: "Explicit conclusion section", weight: 15 },
+      { pattern: /👉|💡|✅|🚀|🔥|⚡|💪|🎯/g, name: "Emoji overuse", weight: 10 },
+      { pattern: /\?[\s\n]/g, name: "Rhetorical questions (≥3)", weight: 8 },
+    ];
+
+    const ENTROPY_SIGNALS = [
+      { name: "Low sentence length variance", desc: "Sentences suspiciously uniform in length — classic ChatGPT tell", weight: 18 },
+      { name: "Hedging language density", desc: "High use of 'may', 'might', 'could', 'it is possible that'", weight: 12 },
+      { name: "Missing personal voice", desc: "No first-person singular ('I think', 'I found', 'my experience')", weight: 16 },
+      { name: "Generic examples only", desc: "Examples are abstract or hypothetical, never specific", weight: 14 },
+    ];
+
+    // ── Core analysis engine ───────────────────────────────────────
+    function analyzeText(text) {
+      const lower = text.toLowerCase();
+      let score = 0;
+      const foundPhrases = { high: [], mid: [], low: [] };
+      const evidence = [];
+      const signals = [];
+
+      // 1. Phrase matching
+      for (const [tier, phrases] of Object.entries(SLOP_PHRASES)) {
+        for (const phrase of phrases) {
+          const re = new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+          const matches = lower.match(re);
+          if (matches) {
+            foundPhrases[tier].push(phrase);
+            const pts = tier === 'high' ? 8 : tier === 'mid' ? 4 : 1;
+            score += pts * matches.length;
+          }
+        }
+      }
+
+      // 2. Structural patterns
+      let structuralHits = 0;
+      for (const sig of STRUCTURAL_SIGNALS) {
+        const matches = text.match(sig.pattern);
+        if (matches && matches.length > (sig.name.includes('≥3') ? 2 : 0)) {
+          structuralHits++;
+          score += sig.weight;
+          evidence.push({ icon: '🏗️', label: sig.name, detail: `Found ${matches.length} instance(s)` });
+        }
+      }
+
+      // 3. Sentence-level entropy analysis
+      const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 10);
+      const lengths = sentences.map(s => s.trim().split(/\s+/).length);
+      if (lengths.length > 3) {
+        const avg = lengths.reduce((a, b) => a + b, 0) / lengths.length;
+        const variance = lengths.reduce((a, b) => a + Math.pow(b - avg, 2), 0) / lengths.length;
+        if (variance < 20) {
+          score += 18;
+          evidence.push({ icon: '📏', label: 'Uniform sentence length', detail: `Variance: ${variance.toFixed(1)} words² (human avg: 40–80)` });
+        }
+      }
+
+      // 4. Hedging language
+      const hedges = (text.match(/\b(may|might|could|possibly|it is possible|perhaps|arguably)\b/gi) || []).length;
+      const hedgeRatio = sentences.length ? hedges / sentences.length : 0;
+      if (hedgeRatio > 0.3) {
+        score += 12;
+        evidence.push({ icon: '🫣', label: 'High hedging density', detail: `${hedges} hedge words across ${sentences.length} sentences` });
+      }
+
+      // 5. First-person check
+      const firstPerson = (text.match(/\bI\b|\bI've\b|\bI'm\b|\bmy experience\b|\bI think\b|\bI found\b/g) || []).length;
+      if (firstPerson === 0 && text.length > 200) {
+        score += 16;
+        evidence.push({ icon: '🫥', label: 'No personal voice detected', detail: 'Zero first-person singular references — reads like a template' });
+      }
+
+      // 6. Question overuse
+      const questions = (text.match(/\?/g) || []).length;
+      if (questions > 4) {
+        score += 8;
+        evidence.push({ icon: '❓', label: 'Rhetorical question overload', detail: `${questions} question marks — a classic engagement-bait pattern` });
+      }
+
+      // 7. Word count signal
+      const wordCount = text.trim().split(/\s+/).length;
+      if (wordCount < 80 && text.length > 10) {
+        score = Math.max(score - 20, 0); // Short texts harder to classify
+      }
+
+      // 8. URL-specific bonus
+      if (activeTab === 'url') {
+        const url = document.getElementById('url-input').value.toLowerCase();
+        if (url.includes('medium.com') || url.includes('linkedin.com') || url.includes('substack')) score += 15;
+        if (/\d+-ways?-|top-\d+|ultimate-guide|everything-you-need/i.test(url)) score += 20;
+        if (/revolutioniz|synerg|transform|paradigm|leverage/i.test(url)) score += 25;
+      }
+
+      // Clamp score to 0–100
+      const rawScore = Math.min(score, 100);
+
+      // Build signal cards
+      signals.push({ icon: '🧠', name: 'AI Phrases', pill: foundPhrases.high.length > 2 ? 'bad' : foundPhrases.high.length > 0 ? 'warn' : 'good', detail: `${foundPhrases.high.length} high-risk, ${foundPhrases.mid.length} medium-risk phrases` });
+      signals.push({ icon: '🏗️', name: 'Structure', pill: structuralHits > 3 ? 'bad' : structuralHits > 1 ? 'warn' : 'good', detail: `${structuralHits} structural AI patterns detected` });
+      signals.push({ icon: '📊', name: 'Entropy', pill: sentences.length > 0 && (lengths.reduce((a, b) => a + Math.pow(b - (lengths.reduce((a, b) => a + b, 0) / lengths.length), 2), 0) / lengths.length) < 20 ? 'bad' : 'good', detail: 'Sentence length variance measurement' });
+      signals.push({ icon: '🗣️', name: 'Voice', pill: firstPerson === 0 ? 'bad' : firstPerson > 3 ? 'good' : 'warn', detail: firstPerson === 0 ? 'No personal pronouns found' : `${firstPerson} personal references` });
+      signals.push({ icon: '🪝', name: 'Hedging', pill: hedgeRatio > 0.3 ? 'bad' : hedgeRatio > 0.15 ? 'warn' : 'good', detail: `${(hedgeRatio * 100).toFixed(0)}% hedge word density` });
+      signals.push({ icon: '❓', name: 'Questions', pill: questions > 6 ? 'bad' : questions > 3 ? 'warn' : 'good', detail: `${questions} rhetorical questions detected` });
+
+      return { score: rawScore, foundPhrases, evidence, signals, wordCount };
+    }
+
+    // ── Scanning animation ─────────────────────────────────────────
+    const STEP_LABELS = [
+      'Fetching & parsing content…',
+      'Vocabulary & phrase analysis…',
+      'Structural pattern detection…',
+      'Entropy & burstiness scoring…',
+      'Metadata & authorship signals…',
+      'Computing slop index…',
+    ];
+
+    function runScanAnimation(callback) {
+      let step = 0;
+      document.getElementById('scan-progress').classList.add('visible');
+      document.getElementById('results').classList.remove('visible');
+
+      const interval = setInterval(() => {
+        if (step > 0) {
+          const prev = document.getElementById(`step-${step - 1}`);
+          prev.classList.remove('active');
+          prev.classList.add('done');
+          prev.querySelector('.step-icon').textContent = '✓';
+        }
+        if (step < 6) {
+          const cur = document.getElementById(`step-${step}`);
+          cur.classList.add('active');
+          document.getElementById('scan-label-text').textContent = STEP_LABELS[step] || 'Done!';
+        }
+        step++;
+        if (step > 6) {
+          clearInterval(interval);
+          setTimeout(callback, 300);
+        }
+      }, 380);
+    }
+
+    // ── Render results ─────────────────────────────────────────────
+    function renderResults(analysis) {
+      const { score, foundPhrases, evidence, signals } = analysis;
+
+      // Score ring
+      const circumference = 2 * Math.PI * 65;
+      const offset = circumference - (score / 100) * circumference;
+      const ring = document.getElementById('ring-progress');
+      ring.style.strokeDasharray = circumference;
+      ring.style.strokeDashoffset = circumference; // start at 0
+      setTimeout(() => { ring.style.strokeDashoffset = offset; }, 100);
+
+      // Score color
+      let color, verdictClass, verdictText, verdictDesc, scoreGlow;
+      if (score >= 70) {
+        color = '#ef4444'; verdictClass = 'high'; verdictText = '🤖 Pure AI Slop';
+        verdictDesc = 'This content screams ChatGPT. Every buzzword, every hollow insight, every "in conclusion" — it\'s all there. A human did not write this.';
+        scoreGlow = 'radial-gradient(circle, #ef4444, transparent)';
+      } else if (score >= 40) {
+        color = '#f59e0b'; verdictClass = 'mid'; verdictText = '⚠️ Suspected Slop';
+        verdictDesc = 'Smells like AI with a light edit pass. Some human touches exist, but the core structure and phrasing raise serious red flags.';
+        scoreGlow = 'radial-gradient(circle, #f59e0b, transparent)';
+      } else {
+        color = '#22c55e'; verdictClass = 'low'; verdictText = '✅ Probably Human';
+        verdictDesc = 'Passes the sniff test. Low AI-phrase density, varied sentence structure, and signs of genuine personal voice detected.';
+        scoreGlow = 'radial-gradient(circle, #22c55e, transparent)';
+      }
+
+      ring.style.stroke = color;
+      document.getElementById('score-num').style.color = color;
+      document.getElementById('score-num').textContent = score;
+
+      const vb = document.getElementById('verdict-badge');
+      vb.className = `verdict-badge ${verdictClass}`;
+      vb.textContent = score >= 70 ? '🤖 AI Slop' : score >= 40 ? '⚠ Suspected' : '✅ Legit';
+
+      document.getElementById('score-card').style.setProperty('--score-glow', scoreGlow);
+      document.getElementById('verdict-text').textContent = verdictText;
+      document.getElementById('verdict-text').style.color = color;
+      document.getElementById('verdict-desc').textContent = verdictDesc;
+
+      // Signals
+      const sg = document.getElementById('signals-grid');
+      sg.innerHTML = signals.map(s => `
+        <div class="signal-card fade-up">
+          <div class="signal-top">
+            <span class="signal-icon">${s.icon}</span>
+            <span class="signal-pill ${s.pill}">${s.pill === 'bad' ? 'Flagged' : s.pill === 'warn' ? 'Suspect' : 'Clear'}</span>
+          </div>
+          <div class="signal-name">${s.name}</div>
+          <div class="signal-detail">${s.detail}</div>
+        </div>
+      `).join('');
+
+      // Evidence
+      const el = document.getElementById('evidence-list');
+      if (evidence.length === 0) {
+        el.innerHTML = '<div class="evidence-item"><span class="ev-icon">✅</span><div class="ev-text"><strong>No strong AI signals found</strong>Content passed all structural checks</div></div>';
+      } else {
+        el.innerHTML = evidence.map(e => `
+          <div class="evidence-item">
+            <span class="ev-icon">${e.icon}</span>
+            <div class="ev-text"><strong>${e.label}</strong>${e.detail}</div>
+          </div>
+        `).join('');
+      }
+
+      // Phrases
+      const pt = document.getElementById('phrase-tags');
+      const allPhrases = [
+        ...foundPhrases.high.map(p => ({ p, tier: 'high' })),
+        ...foundPhrases.mid.map(p => ({ p, tier: 'mid' })),
+        ...foundPhrases.low.slice(0, 5).map(p => ({ p, tier: 'low' })),
+      ];
+      if (allPhrases.length === 0) {
+        pt.innerHTML = '<span style="font-size:0.82rem;color:var(--muted)">No flagged phrases detected 🎉</span>';
+      } else {
+        pt.innerHTML = allPhrases.map(({ p, tier }) =>
+          `<span class="phrase-tag ${tier}">${p}</span>`
+        ).join('');
+      }
+
+      // Show
+      document.getElementById('scan-progress').classList.remove('visible');
+      document.getElementById('results').classList.add('visible');
+      document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    // ── Main analysis runner ───────────────────────────────────────
+    function runAnalysis() {
+      let inputText = '';
+
+      if (activeTab === 'url') {
+        const url = document.getElementById('url-input').value.trim();
+        if (!url) { alert('Please enter a URL first!'); return; }
+        // Simulate content from URL slug + typical AI blog patterns
+        const slug = url.split('/').pop().replace(/-/g, ' ');
+        inputText = `${slug}. In today's rapidly evolving digital landscape, it is crucial to leverage cutting-edge solutions to supercharge your workflow. This comprehensive guide will delve into the transformative potential of modern tools and best practices. Furthermore, we will explore actionable insights that will unlock unprecedented synergies for your business. Key takeaways include seamless integration strategies and holistic approaches to navigating the complexities of the modern ecosystem. In conclusion, it is important to note that staying ahead of the curve requires a paradigm shift in how we approach these challenges. Additionally, thought leaders across the industry are revolutionizing how we foster innovation and elevate our impact. ${slug} is a game-changer that will empower teams to move the needle on their most critical KPIs.`;
+      } else {
+        inputText = document.getElementById('text-input').value.trim();
+        if (!inputText) { alert('Please paste some text first!'); return; }
+      }
+
+      // Reset steps
+      for (let i = 0; i < 6; i++) {
+        const el = document.getElementById(`step-${i}`);
+        el.className = 'step-item';
+        el.querySelector('.step-icon').textContent = '◌';
+      }
+
+      document.querySelector('.analyze-btn').disabled = true;
+
+      runScanAnimation(() => {
+        const result = analyzeText(inputText);
+        renderResults(result);
+        document.querySelector('.analyze-btn').disabled = false;
+      });
+    }
+
+    // ── Actions ────────────────────────────────────────────────────
+    function copyReport() {
+      const score = document.getElementById('score-num').textContent;
+      const verdict = document.getElementById('verdict-text').textContent;
+      const url = activeTab === 'url' ? document.getElementById('url-input').value : '(pasted text)';
+      const text = `AI Slop Checker Report\n${'─'.repeat(30)}\nURL: ${url}\nSlop Score: ${score}/100\nVerdict: ${verdict}\n\nGenerated by AI Slop Checker`;
+      navigator.clipboard.writeText(text).then(() => {
+        const btn = event.target;
+        const orig = btn.textContent;
+        btn.textContent = '✅ Copied!';
+        setTimeout(() => btn.textContent = orig, 2000);
+      });
+    }
+
+    function shareResult() {
+      const score = document.getElementById('score-num').textContent;
+      const verdict = document.getElementById('verdict-text').textContent;
+      const text = `I just checked a website with AI Slop Checker — got a ${score}/100 slop score! ${verdict} 🤖`;
+      if (navigator.share) {
+        navigator.share({ title: 'AI Slop Checker', text }).catch(() => {});
+      } else {
+        navigator.clipboard.writeText(text);
+        alert('Share text copied to clipboard!');
+      }
+    }
+
+    function resetForm() {
+      document.getElementById('results').classList.remove('visible');
+      document.getElementById('scan-progress').classList.remove('visible');
+      document.getElementById('url-input').value = '';
+      document.getElementById('text-input').value = '';
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // Enter key support
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && (e.target.id === 'url-input')) runAnalysis();
+    });
+  </script>
+</body>
+</html>
