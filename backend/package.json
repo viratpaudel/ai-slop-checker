@@ -1,0 +1,13 @@
+{
+  "name": "ai-slop-checker-backend",
+  "version": "1.0.0",
+  "description": "API server for live web scraping and AI slop detection analysis",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "keywords": ["ai-detection", "slop-checker", "nlp", "scraper"],
+  "author": "Virat Paudel",
+  "license": "MIT"
+}
