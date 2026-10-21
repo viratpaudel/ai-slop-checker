@@ -918,6 +918,38 @@
       { name: "Generic examples only", desc: "Examples are abstract or hypothetical, never specific", weight: 14 },
     ];
 
+    // ── Readability & Lexical Metrics ──────────────────────────────
+    function countSyllables(word) {
+      const clean = word.toLowerCase().replace(/[^a-z]/g, '');
+      if (!clean) return 0;
+      if (clean.length <= 3) return 1;
+      const processed = clean.replace(/(?:[^laeiouy]|ed|es|e)$/, '').replace(/^y/, '');
+      const matches = processed.match(/[aeiouy]{1,2}/g);
+      return matches ? Math.max(1, matches.length) : 1;
+    }
+
+    function calculateReadabilityMetrics(text, sentences) {
+      const words = text.trim().split(/\s+/).filter(w => w.length > 0);
+      if (words.length === 0 || sentences.length === 0) {
+        return { readingEase: 100, gradeLevel: 0, fogIndex: 0, complexWordPct: 0 };
+      }
+      let totalSyllables = 0;
+      let complexWords = 0;
+      for (const w of words) {
+        const syl = countSyllables(w);
+        totalSyllables += syl;
+        if (syl >= 3) complexWords++;
+      }
+      const wordsPerSentence = words.length / Math.max(1, sentences.length);
+      const syllablesPerWord = totalSyllables / words.length;
+      const fleschEase = Math.round(Math.max(0, Math.min(100, 206.835 - (1.015 * wordsPerSentence) - (84.6 * syllablesPerWord))));
+      const gradeLevel = Math.max(1, Math.round(0.39 * wordsPerSentence + 11.8 * syllablesPerWord - 15.59));
+      const complexPct = (complexWords / words.length) * 100;
+      const fogIndex = Math.max(1, Math.round(0.4 * (wordsPerSentence + complexPct)));
+
+      return { readingEase: fleschEase, gradeLevel, fogIndex, complexWordPct: Math.round(complexPct) };
+    }
+
     // ── Core analysis engine ───────────────────────────────────────
     function analyzeText(text) {
       const lower = text.toLowerCase();
@@ -990,7 +1022,18 @@
         score = Math.max(score - 20, 0); // Short texts harder to classify
       }
 
-      // 8. URL-specific bonus
+      // 8. Readability & lexical complexity
+      const readability = calculateReadabilityMetrics(text, sentences);
+      if (readability.gradeLevel >= 13 && readability.readingEase < 45) {
+        score += 10;
+        evidence.push({
+          icon: '📚',
+          label: 'Academic/bureaucratic density',
+          detail: `Grade level ${readability.gradeLevel} (Fog index: ${readability.fogIndex}, Reading Ease: ${readability.readingEase}/100)`
+        });
+      }
+
+      // 9. URL-specific bonus
       if (activeTab === 'url') {
         const url = document.getElementById('url-input').value.toLowerCase();
         if (url.includes('medium.com') || url.includes('linkedin.com') || url.includes('substack')) score += 15;
@@ -1007,9 +1050,10 @@
       signals.push({ icon: '📊', name: 'Entropy', pill: sentences.length > 0 && (lengths.reduce((a, b) => a + Math.pow(b - (lengths.reduce((a, b) => a + b, 0) / lengths.length), 2), 0) / lengths.length) < 20 ? 'bad' : 'good', detail: 'Sentence length variance measurement' });
       signals.push({ icon: '🗣️', name: 'Voice', pill: firstPerson === 0 ? 'bad' : firstPerson > 3 ? 'good' : 'warn', detail: firstPerson === 0 ? 'No personal pronouns found' : `${firstPerson} personal references` });
       signals.push({ icon: '🪝', name: 'Hedging', pill: hedgeRatio > 0.3 ? 'bad' : hedgeRatio > 0.15 ? 'warn' : 'good', detail: `${(hedgeRatio * 100).toFixed(0)}% hedge word density` });
+      signals.push({ icon: '📚', name: 'Readability', pill: readability.gradeLevel >= 13 ? 'warn' : 'good', detail: `Grade ${readability.gradeLevel} | Ease ${readability.readingEase}/100` });
       signals.push({ icon: '❓', name: 'Questions', pill: questions > 6 ? 'bad' : questions > 3 ? 'warn' : 'good', detail: `${questions} rhetorical questions detected` });
 
-      return { score: rawScore, foundPhrases, evidence, signals, wordCount };
+      return { score: rawScore, foundPhrases, evidence, signals, wordCount, readability };
     }
 
     // ── Scanning animation ─────────────────────────────────────────
