@@ -648,6 +648,81 @@
       color: #fff;
     }
 
+    /* ── History Drawer ───────────────────────────────────────────── */
+    .history-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      backdrop-filter: blur(20px);
+      margin-top: 24px;
+      display: none;
+    }
+
+    .history-card.visible { display: block; }
+
+    .history-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+
+    .history-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-height: 280px;
+      overflow-y: auto;
+    }
+
+    .history-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      border-radius: 8px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--border);
+      font-size: 0.82rem;
+    }
+
+    .history-item-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      overflow: hidden;
+    }
+
+    .history-snippet {
+      max-width: 320px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: var(--muted);
+    }
+
+    .history-date {
+      font-size: 0.7rem;
+      color: var(--muted);
+      margin-left: 8px;
+    }
+
+    .history-btn-sm {
+      padding: 4px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.05);
+      color: var(--text);
+      font-size: 0.72rem;
+      cursor: pointer;
+    }
+
+    .history-btn-sm:hover {
+      background: rgba(168,85,247,0.2);
+      border-color: var(--purple);
+    }
+
     /* ── Examples ─────────────────────────────────────────────────── */
     .examples {
       display: flex;
@@ -844,8 +919,23 @@
         <button class="action-btn" onclick="copyReport()">📋 Copy Report</button>
         <button class="action-btn" onclick="resetForm()">🔄 Check Another</button>
         <button class="action-btn primary" onclick="shareResult()">↗ Share Result</button>
+        <button class="action-btn" onclick="toggleHistoryDrawer()">📜 History (<span id="history-count">0</span>)</button>
       </div>
 
+    </div>
+
+    <!-- History Drawer -->
+    <div class="history-card" id="history-drawer">
+      <div class="history-header">
+        <div class="section-title" style="margin-bottom:0;">Recent Analysis History</div>
+        <div style="display:flex;gap:8px;">
+          <button class="history-btn-sm" onclick="exportHistoryJSON()">📥 Export JSON</button>
+          <button class="history-btn-sm" onclick="clearHistory()">🗑️ Clear</button>
+        </div>
+      </div>
+      <div class="history-list" id="history-items">
+        <div style="color:var(--muted);font-size:0.8rem;text-align:center;padding:12px;">No previous scans recorded yet.</div>
+      </div>
     </div>
 
     <!-- ── Footer ── -->
@@ -1206,6 +1296,12 @@
       runScanAnimation(() => {
         const result = analyzeText(inputText);
         renderResults(result);
+        saveHistoryEntry({
+          type: activeTab,
+          score: result.score,
+          source: inputText,
+          snippet: (activeTab === 'url' ? document.getElementById('url-input').value : inputText).slice(0, 55) + '...'
+        });
         document.querySelector('.analyze-btn').disabled = false;
       });
     }
@@ -1243,6 +1339,98 @@
       document.getElementById('text-input').value = '';
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
+
+    // ── History Persistence & Management ──────────────────────────
+    const STORAGE_KEY = 'ai_slop_scan_history';
+
+    function getHistory() {
+      try {
+        return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+      } catch (e) {
+        return [];
+      }
+    }
+
+    function saveHistoryEntry(entry) {
+      const history = getHistory();
+      history.unshift({
+        id: Date.now(),
+        date: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', month: 'short', day: 'numeric' }),
+        ...entry
+      });
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(history.slice(0, 25)));
+      } catch (e) {
+        // quota exceeded or private mode
+      }
+      updateHistoryUI();
+    }
+
+    function updateHistoryUI() {
+      const history = getHistory();
+      const countEl = document.getElementById('history-count');
+      if (countEl) countEl.textContent = history.length;
+      const listEl = document.getElementById('history-items');
+      if (!listEl) return;
+      if (history.length === 0) {
+        listEl.innerHTML = '<div style="color:var(--muted);font-size:0.8rem;text-align:center;padding:12px;">No previous scans recorded yet.</div>';
+        return;
+      }
+      listEl.innerHTML = history.map(item => `
+        <div class="history-item">
+          <div class="history-item-left">
+            <span class="signal-pill ${item.score >= 70 ? 'bad' : item.score >= 40 ? 'warn' : 'good'}">${item.score}/100</span>
+            <span class="history-snippet">${item.snippet || 'Analyzed content'}</span>
+            <span class="history-date">${item.date}</span>
+          </div>
+          <div>
+            <button class="history-btn-sm" onclick="restoreHistoryScan(${item.id})">Reload</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function toggleHistoryDrawer() {
+      const drawer = document.getElementById('history-drawer');
+      drawer.classList.toggle('visible');
+      updateHistoryUI();
+    }
+
+    function exportHistoryJSON() {
+      const history = getHistory();
+      const blob = new Blob([JSON.stringify(history, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `ai-slop-checker-history-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function clearHistory() {
+      if (confirm('Clear all scan history?')) {
+        localStorage.removeItem(STORAGE_KEY);
+        updateHistoryUI();
+      }
+    }
+
+    function restoreHistoryScan(id) {
+      const item = getHistory().find(h => h.id === id);
+      if (!item) return;
+      if (item.type === 'url') {
+        document.getElementById('url-input').value = item.source;
+        switchTab('url', document.querySelectorAll('.tab-btn')[0]);
+      } else {
+        document.getElementById('text-input').value = item.source;
+        switchTab('text', document.querySelectorAll('.tab-btn')[1]);
+      }
+      runAnalysis();
+    }
+
+    // Initialize history counter on load
+    document.addEventListener('DOMContentLoaded', () => {
+      updateHistoryUI();
+    });
 
     // Enter key support
     document.addEventListener('keydown', e => {
