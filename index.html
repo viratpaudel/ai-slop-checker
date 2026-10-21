@@ -606,6 +606,45 @@
     .phrase-tag.mid   { background: rgba(245,158,11,0.12); color: #fcd34d; border: 1px solid rgba(245,158,11,0.3); }
     .phrase-tag.low   { background: rgba(168,85,247,0.12); color: #d8b4fe; border: 1px solid rgba(168,85,247,0.3); }
 
+    /* Highlighted text preview */
+    .annotated-box {
+      background: rgba(0, 0, 0, 0.25);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      font-size: 0.85rem;
+      line-height: 1.7;
+      max-height: 240px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: #cbd5e1;
+    }
+
+    .annotated-mark {
+      padding: 2px 5px;
+      border-radius: 4px;
+      font-weight: 600;
+    }
+
+    .annotated-mark.high {
+      background: rgba(239, 68, 68, 0.35);
+      color: #fca5a5;
+      border-bottom: 2px solid #ef4444;
+    }
+
+    .annotated-mark.mid {
+      background: rgba(245, 158, 11, 0.35);
+      color: #fde68a;
+      border-bottom: 2px solid #f59e0b;
+    }
+
+    .annotated-mark.low {
+      background: rgba(168, 85, 247, 0.25);
+      color: #e9d5ff;
+      border-bottom: 2px solid #a855f7;
+    }
+
     /* Share / copy bar */
     .actions-bar {
       display: flex;
@@ -914,6 +953,12 @@
         <div class="phrase-tags" id="phrase-tags"></div>
       </div>
 
+      <!-- Annotated Text View -->
+      <div class="phrase-section fade-up fade-up-3" id="annotated-section">
+        <div class="section-title">📝 In-Context Phrase Highlights</div>
+        <div class="annotated-box" id="annotated-text-box"></div>
+      </div>
+
       <!-- Actions -->
       <div class="actions-bar fade-up fade-up-4">
         <button class="action-btn" onclick="copyReport()">📋 Copy Report</button>
@@ -949,6 +994,7 @@
   <script>
     // ── State ──────────────────────────────────────────────────────
     let activeTab = 'url';
+    let currentInputText = '';
 
     // ── Tab switching ──────────────────────────────────────────────
     function switchTab(tab, btn) {
@@ -1263,10 +1309,36 @@
         ).join('');
       }
 
+      // In-context annotated text highlight
+      renderAnnotatedText(currentInputText, foundPhrases);
+
       // Show
       document.getElementById('scan-progress').classList.remove('visible');
       document.getElementById('results').classList.add('visible');
       document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    // ── In-context Text Highlighting ─────────────────────────────
+    function renderAnnotatedText(text, foundPhrases) {
+      const box = document.getElementById('annotated-text-box');
+      if (!box) return;
+      if (!text) {
+        box.textContent = 'No text content available to display.';
+        return;
+      }
+      let safe = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const all = [
+        ...foundPhrases.high.map(p => ({ p, tier: 'high' })),
+        ...foundPhrases.mid.map(p => ({ p, tier: 'mid' })),
+        ...foundPhrases.low.slice(0, 5).map(p => ({ p, tier: 'low' }))
+      ];
+      all.sort((a, b) => b.p.length - a.p.length);
+      for (const { p, tier } of all) {
+        const escaped = p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const re = new RegExp(`(${escaped})`, 'gi');
+        safe = safe.replace(re, `<mark class="annotated-mark ${tier}">$1</mark>`);
+      }
+      box.innerHTML = safe;
     }
 
     // ── Main analysis runner ───────────────────────────────────────
@@ -1283,6 +1355,7 @@
         inputText = document.getElementById('text-input').value.trim();
         if (!inputText) { alert('Please paste some text first!'); return; }
       }
+      currentInputText = inputText;
 
       // Reset steps
       for (let i = 0; i < 6; i++) {
