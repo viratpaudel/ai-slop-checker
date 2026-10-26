@@ -96,6 +96,11 @@ function analyzeSlopContent(text) {
     score += 10;
   }
 
+  // Lexical Diversity (Type-Token Ratio / TTR)
+  const normalizedWords = words.map(w => w.toLowerCase().replace(/[^a-z0-9]/g, '')).filter(Boolean);
+  const uniqueWords = new Set(normalizedWords);
+  const lexicalDiversity = normalizedWords.length > 0 ? Number((uniqueWords.size / normalizedWords.length).toFixed(3)) : 0;
+
   const finalScore = Math.min(100, Math.max(0, score));
 
   let verdict = 'Probably Human';
@@ -107,6 +112,7 @@ function analyzeSlopContent(text) {
     verdict,
     wordCount: words.length,
     sentenceCount: sentences.length,
+    lexicalDiversity,
     matchedPhrases: hits,
     hasFirstPersonVoice: firstPerson > 0,
     passiveVoiceCount: passiveCount
