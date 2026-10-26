@@ -123,6 +123,29 @@ const server = http.createServer(async (req, res) => {
     return res.end(JSON.stringify({ status: 'ok', service: 'ai-slop-checker-backend', uptime: process.uptime() }));
   }
 
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/analyze-text') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', () => {
+      try {
+        const payload = JSON.parse(body || '{}');
+        const text = payload.text || '';
+        if (!text.trim()) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'Text field cannot be empty.' }));
+        }
+
+        const analysis = analyzeSlopContent(text);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ textLength: text.length, analysis }));
+      } catch (err) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: 'Invalid JSON payload' }));
+      }
+    });
+    return;
+  }
+
   if (req.method === 'POST' && parsedUrl.pathname === '/api/scrape-and-analyze') {
     let body = '';
     req.on('data', chunk => { body += chunk; });
