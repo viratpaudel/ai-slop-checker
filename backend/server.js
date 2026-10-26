@@ -89,6 +89,13 @@ function analyzeSlopContent(text) {
   const firstPerson = (text.match(/\b(I|I've|I'm|my|mine|we|our)\b/gi) || []).length;
   if (firstPerson === 0 && words.length > 50) score += 16;
 
+  // Passive voice construction frequency (common in AI synthetic expository text)
+  const passiveMatches = text.match(/\b(is|are|was|were|been|being)\s+([a-z]+ed|[a-z]+en|shown|known|given|seen|found|made)\b/gi) || [];
+  const passiveCount = passiveMatches.length;
+  if (sentences.length > 0 && (passiveCount / Math.max(1, sentences.length)) >= 0.5 && words.length > 40) {
+    score += 10;
+  }
+
   const finalScore = Math.min(100, Math.max(0, score));
 
   let verdict = 'Probably Human';
@@ -101,7 +108,8 @@ function analyzeSlopContent(text) {
     wordCount: words.length,
     sentenceCount: sentences.length,
     matchedPhrases: hits,
-    hasFirstPersonVoice: firstPerson > 0
+    hasFirstPersonVoice: firstPerson > 0,
+    passiveVoiceCount: passiveCount
   };
 }
 
