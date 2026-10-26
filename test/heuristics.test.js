@@ -70,3 +70,11 @@ test('analyzeSlopContent - score is always clamped between 0 and 100', () => {
   const result = analyzeSlopContent(repeatedSlop);
   assert.equal(result.score, 100);
 });
+
+test('analyzeSlopContent - computes lexical diversity and passive voice metrics', () => {
+  const sample = "The report was generated and conclusions were made based on data. The process is considered standard.";
+  const result = analyzeSlopContent(sample);
+  assert.ok(typeof result.lexicalDiversity === 'number');
+  assert.ok(result.lexicalDiversity > 0 && result.lexicalDiversity <= 1.0);
+  assert.ok(result.passiveVoiceCount >= 2, `Expected at least 2 passive matches, found ${result.passiveVoiceCount}`);
+});
